@@ -12,9 +12,7 @@ rec {
     od -An -vtx1 | tr -d ' \n'
   '';
 
-  pbkdf2-sha512 = runCommandCC "pbkdf2-sha512" {
-    buildInputs = [ openssl ];
-  } ''
+  pbkdf2-sha512 = runCommandCC "pbkdf2-sha512" { buildInputs = [ openssl ]; } ''
     $CC -O3 \
       -I${openssl.dev}/include \
       -L${openssl.out}/lib \
@@ -24,8 +22,8 @@ rec {
     install -TD pbkdf2-sha512 $out/bin/pbkdf2-sha512
   '';
 
-  setup-luks = writeShellApplication {
-    name = "setup-luks";
+  luks-setup = writeShellApplication {
+    name = "luks-setup";
 
     runtimeInputs = [
       hextorb
@@ -39,7 +37,7 @@ rec {
 
     text = ''
       printHelp() {
-        echo 'Usage: setup-luks [-h] (--luks-part | -l <path>) (--efi-part | -e <path>)'
+        echo 'Usage: luks-setup [-h] (--luks-part | -l <path>) (--efi-part | -e <path>)'
         echo '                  [--efi-mnt | -m <path>] [--password | -p]'
         echo '                  [--salt | -s <number>] [--storage | -S <path>]'
         echo '                  [--key | -k <number>] [--iterations | -i <number>]'
@@ -77,6 +75,14 @@ rec {
       while [ "$#" -gt 0 ]; do
           i="$1"; shift 1
           case "$i" in
+            --cipher|-c)
+              CIPHER="$1"
+              shift 1
+              ;;
+            --efi-part|-e)
+              EFI_PART="$1"
+              shift 1
+              ;;
             --help|-h)
               printHelp
               exit 0
@@ -84,23 +90,12 @@ rec {
             --hash|-H)
               HASH="$1"
               ;;
-            --salt|-s)
-              SALT_LENGTH="$1"
-              shift 1
-              ;;
-            --key|-k)
-              KEY_LENGTH="$1"
-              shift 1
-              ;;
-            --password|-p)
-              withPassword=1
-              ;;
             --iterations|-i)
               ITERATIONS="$1"
               shift 1
               ;;
-            --efi-part|-e)
-              EFI_PART="$1"
+            --key|-k)
+              KEY_LENGTH="$1"
               shift 1
               ;;
             --luks-part|-l)
@@ -111,12 +106,15 @@ rec {
               EFI_MNT="$1"
               shift 1
               ;;
-            --storage|-S)
-              STORAGE="$1"
+            --password|-p)
+              withPassword=1
+              ;;
+            --salt|-s)
+              SALT_LENGTH="$1"
               shift 1
               ;;
-            --cipher|-c)
-              CIPHER="$1"
+            --storage|-S)
+              STORAGE="$1"
               shift 1
               ;;
             *)
@@ -138,7 +136,13 @@ rec {
       challenge="$(echo -n "$salt" | openssl dgst -binary -sha512 | rbtohex)"
       response="$(ykchalresp -2 -x "$challenge" 2>/dev/null)"
 
+      if [[ -z "$response" ]]; then
+        echo 'Failed to compute response. Please check your YubiKey.'
+        exit 1
+      fi
+
       if [[ -n "$withPassword" ]]; then
+        echo -n 'Enter password: '
         read -r -s k_user
         k_luks="$(echo -n "$k_user" | pbkdf2-sha512 $((KEY_LENGTH / 8)) "$ITERATIONS" "$response" | rbtohex)"
       else
@@ -151,11 +155,16 @@ rec {
       mkdir -p "$(dirname "$EFI_MNT$STORAGE")"
       echo -ne "$salt\n$ITERATIONS" > "$EFI_MNT$STORAGE"
       echo -n "$k_luks" | hextorb | cryptsetup luksFormat --cipher="$CIPHER" --key-size="$KEY_LENGTH" --hash="$HASH" --key-file=- "$LUKS_PART"
+
+      if [[ "$?" -eq 1 ]]; then
+        echo 'Failed to set up volume'
+        exit 1
+      fi
     '';
   };
 
-  unlock-luks = writeShellApplication {
-    name = "unlock-luks";
+  luks-unlock = writeShellApplication {
+    name = "luks-unlock";
 
     runtimeInputs = [
       hextorb
@@ -168,7 +177,7 @@ rec {
 
     text = ''
       printHelp() {
-        echo 'Usage: unlock-luks [-h] [--efi-mnt | -m <path>] [--luks-part | -l <path>]'
+        echo 'Usage: luks-unlock [-h] [--efi-mnt | -m <path>] [--luks-part | -l <path>]'
         echo '                   [--luks-root | -l <name>] [--password | -p]'
         echo '                   [--key | -k <number>] [--slot | -s (1 | 2)]'
         echo '                   [--abs-storage | -a <path>] [--storage | -S <path>]'
@@ -267,6 +276,7 @@ rec {
       response="$(ykchalresp -"$SLOT" -x "$challenge" 2>/dev/null)"
 
       if [[ -n "$withPassword" ]]; then
+        echo -n 'Enter password: '
         read -r -s k_user
         k_luks="$(echo -n "$k_user" | pbkdf2-sha512 $((KEY_LENGTH / 8)) "$ITERATIONS" "$response" | rbtohex)"
       else
@@ -274,6 +284,13 @@ rec {
       fi
 
       echo -n "$k_luks" | hextorb | cryptsetup luksOpen "$LUKS_PART" "$LUKSROOT" --key-file=-
+
+      if [[ "$?" -eq 1 ]]; then
+        echo 'Failed to unlock volume'
+        exit 1
+      fi
+
+      echo "Unencrypted volume at /dev/mapper/$LUKSROOT"
     '';
   };
 }

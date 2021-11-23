@@ -22,8 +22,8 @@
           hextorb
           rbtohex
           pbkdf2-sha512
-          setup-luks
-          unlock-luks;
+          luks-setup
+          luks-unlock;
       });
 
       devShell = forAllSystems (system:

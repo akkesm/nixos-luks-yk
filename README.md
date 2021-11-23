@@ -1,6 +1,6 @@
-# LUKS-YubiKey based FDE on NixOS - Helper functions
+# YubiKey-based FDE on NixOS - Helper functions
 
-This flake provides the necessary functions set up a LUKS device
+This flake provides the necessary functions to set up a LUKS device
 with YubiKey based authentication on NixOS,
 plus a script to facilitate the process.
 
@@ -13,13 +13,13 @@ and [the accompanying repo][2].
 ## In this repo
 
 This flake provides:
-* `luksykPackages` package set, containing:
+* The following packages:
   - `hextorb`
   - `rbtohex`
-  - `setup-luks`
-  - `unlock-luks`
+  - `luks-setup`
+  - `luks-unlock`
 * An overlay with all the packages in the top level
-* A devShell with all the packages plus cryptsetup, openssl
-  and yubikey-personalization
+* A devShell with all the packages plus cryptsetup, openssl,
+  parted and yubikey-personalization
 
 The default values for the scripts are the ones used in the guide.

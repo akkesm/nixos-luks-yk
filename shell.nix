@@ -4,13 +4,13 @@ pkgs.mkShell {
   packages = with pkgs; [
     hextorb
     rbtohex
-    parted
     pbkdf2-sha512
-    setup-luks
-    unlock-luks
+    luks-setup
+    luks-unlock
 
     cryptsetup
     openssl
+    parted
     yubikey-personalization
   ];
 }
